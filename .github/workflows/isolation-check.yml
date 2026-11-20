@@ -1,0 +1,166 @@
+name: Linux Isolation Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolation-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - name: System inventory
+        run: |
+          set -eu
+          echo "===== SYSTEM ====="
+          uname -a
+          id
+          echo "===== USER NAMESPACES ====="
+          cat /proc/sys/user/max_user_namespaces 2>/dev/null || true
+          echo "===== SECURITY ====="
+          grep -E '^(CapEff|NoNewPrivs|Seccomp):' /proc/self/status
+
+      - name: Install Bubblewrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap iproute2
+
+      - name: Bubblewrap availability
+        run: |
+          set -eu
+          bwrap --version
+          command -v bwrap
+
+      - name: Namespace isolation
+        run: |
+          set -euo pipefail
+
+          echo "===== CAPTURE HOST NAMESPACES ====="
+
+          HOST_USER_NS="$(readlink /proc/self/ns/user)"
+          HOST_PID_NS="$(readlink /proc/self/ns/pid)"
+          HOST_NET_NS="$(readlink /proc/self/ns/net)"
+          HOST_MNT_NS="$(readlink /proc/self/ns/mnt)"
+
+          echo "user: $HOST_USER_NS"
+          echo "pid:  $HOST_PID_NS"
+          echo "net:  $HOST_NET_NS"
+          echo "mnt:  $HOST_MNT_NS"
+
+          echo "===== CREATE HOST MARKER ====="
+
+          MARKER="/tmp/gha-host-marker-$$"
+          touch "$MARKER"
+
+          sleep 120 &
+          HOST_PID=$!
+
+          cleanup() {
+            kill "$HOST_PID" 2>/dev/null || true
+            rm -f "$MARKER"
+          }
+
+          trap cleanup EXIT
+
+          echo "===== START BUBBLEWRAP ====="
+
+          bwrap \
+            --unshare-all \
+            --die-with-parent \
+            --ro-bind / / \
+            --proc /proc \
+            --dev /dev \
+            --tmpfs /tmp \
+            --setenv HOST_MARKER "$MARKER" \
+            --setenv HOST_PID "$HOST_PID" \
+            --setenv HOST_USER_NS "$HOST_USER_NS" \
+            --setenv HOST_PID_NS "$HOST_PID_NS" \
+            --setenv HOST_NET_NS "$HOST_NET_NS" \
+            --setenv HOST_MNT_NS "$HOST_MNT_NS" \
+            -- bash -euc '
+
+              echo "===== SANDBOX IDENTITY ====="
+              id
+
+              echo "===== NAMESPACE COMPARISON ====="
+
+              check_namespace() {
+                name="$1"
+                host_id="$2"
+                sandbox_id="$(readlink "/proc/self/ns/$name")"
+
+                echo "$name: host=$host_id sandbox=$sandbox_id"
+
+                if [ "$host_id" = "$sandbox_id" ]; then
+                  echo "FAIL: $name namespace was not isolated"
+                  exit 1
+                fi
+              }
+
+              check_namespace user "$HOST_USER_NS"
+              check_namespace pid "$HOST_PID_NS"
+              check_namespace net "$HOST_NET_NS"
+              check_namespace mnt "$HOST_MNT_NS"
+
+              echo "PASS: namespace identifiers differ"
+
+              echo "===== FILESYSTEM TEST ====="
+
+              if [ -e "$HOST_MARKER" ]; then
+                echo "FAIL: host marker is visible"
+                exit 1
+              fi
+
+              touch /tmp/sandbox-test-file
+              test -f /tmp/sandbox-test-file
+
+              if touch /etc/gha-isolation-write-test 2>/dev/null; then
+                rm -f /etc/gha-isolation-write-test
+                echo "FAIL: write to root filesystem succeeded"
+                exit 1
+              fi
+
+              echo "PASS: filesystem write checks"
+
+              echo "===== PROCESS TEST ====="
+
+              if kill -0 "$HOST_PID" 2>/dev/null; then
+                echo "FAIL: host process is visible"
+                exit 1
+              fi
+
+              echo "PASS: host process is not accessible"
+
+              echo "===== NETWORK TEST ====="
+
+              LINKS="$(ip -brief link)"
+              echo "$LINKS"
+
+              if ! printf "%s\n" "$LINKS" | grep -q "^lo[[:space:]]"; then
+                echo "FAIL: loopback interface missing"
+                exit 1
+              fi
+
+              if printf "%s\n" "$LINKS" | awk "NF && \$1 != \"lo\" { found=1 } END { exit !found }"; then
+                echo "FAIL: external network interface visible"
+                exit 1
+              fi
+
+              ROUTES="$(ip route)"
+              echo "Sandbox routes:"
+              echo "$ROUTES"
+
+              if printf "%s\n" "$ROUTES" | grep -q "^default"; then
+                echo "FAIL: default network route exists"
+                exit 1
+              fi
+
+              echo "PASS: no external interface or default route"
+
+              echo "===== SANDBOX TESTS PASSED ====="
+            '
+
+          echo "===== ISOLATION DIAGNOSTIC COMPLETED ====="
