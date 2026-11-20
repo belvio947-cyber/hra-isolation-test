@@ -1,0 +1,149 @@
+name: Isolation Hardening Diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hardened-sandbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Install security tools
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            bubblewrap \
+            debootstrap \
+            iproute2 \
+            util-linux \
+            coreutils \
+            grep \
+            mawk \
+            python3-seccomp
+
+          echo "===== SECCOMP BPF GENERATION ====="
+
+          /usr/bin/python3 - <<'SECCOMP'
+          import os
+          import seccomp
+
+          path = os.path.join(os.environ["RUNNER_TEMP"], "deny-ptrace.bpf")
+
+          filt = seccomp.SyscallFilter(
+              defaction=seccomp.ALLOW
+          )
+          filt.add_rule(seccomp.ERRNO(99), "ptrace")
+
+          with open(path, "wb") as output:
+              filt.export_bpf(output)
+
+          size = os.path.getsize(path)
+          assert size > 0, "Empty BPF filter"
+
+          print("SECCOMP_BPF_GENERATED", size)
+          SECCOMP
+
+          test -s "$RUNNER_TEMP/deny-ptrace.bpf"
+
+      - name: Build minimal filesystem
+        run: |
+          set -euo pipefail
+
+          ROOTFS="$RUNNER_TEMP/minimal-rootfs"
+
+          sudo debootstrap \
+            --variant=minbase \
+            --include=bash,python3,iproute2,util-linux,coreutils,grep,mawk \
+            noble \
+            "$ROOTFS" \
+            https://archive.ubuntu.com/ubuntu
+
+          sudo mkdir -p \
+            "$ROOTFS/work" \
+            "$ROOTFS/tmp" \
+            "$ROOTFS/run"
+
+          sudo touch "$ROOTFS/sandbox-test.sh"
+
+          test -x "$ROOTFS/bin/bash"
+          test -x "$ROOTFS/usr/bin/python3"
+          test -x "$ROOTFS/usr/bin/unshare"
+          test -x "$ROOTFS/usr/sbin/ip" || test -x "$ROOTFS/sbin/ip"
+          test -f "$ROOTFS/sandbox-test.sh"
+
+          echo "PASS: minimal filesystem created"
+          du -sh "$ROOTFS"
+
+      - name: Run hardened sandbox tests
+        run: |
+          set -euo pipefail
+
+          ROOTFS="$RUNNER_TEMP/minimal-rootfs"
+          SCRIPT="$GITHUB_WORKSPACE/.github/scripts/sandbox-test.sh"
+          FILTER="$RUNNER_TEMP/deny-ptrace.bpf"
+
+          test -s "$FILTER"
+          test -s "$SCRIPT"
+
+          bash -n "$SCRIPT"
+
+          HOST_USER_NS="$(readlink /proc/self/ns/user)"
+          HOST_PID_NS="$(readlink /proc/self/ns/pid)"
+          HOST_NET_NS="$(readlink /proc/self/ns/net)"
+          HOST_MNT_NS="$(readlink /proc/self/ns/mnt)"
+
+          HOST_MARKER="/tmp/hra-host-marker-$$"
+          HOST_PROCESS_MARKER="HRA_HOST_SENTINEL_$$"
+
+          touch "$HOST_MARKER"
+
+          bash -c 'exec -a "$1" sleep 300' _ "$HOST_PROCESS_MARKER" &
+          HOST_PID=$!
+
+          cleanup() {
+            kill "$HOST_PID" 2>/dev/null || true
+            rm -f "$HOST_MARKER"
+          }
+
+          trap cleanup EXIT
+
+          exec 9< "$FILTER"
+
+          timeout 60s bwrap \
+            --seccomp 9 \
+            --unshare-user \
+            --disable-userns \
+            --unshare-pid \
+            --unshare-net \
+            --unshare-ipc \
+            --unshare-uts \
+            --new-session \
+            --die-with-parent \
+            --ro-bind "$ROOTFS" / \
+            --ro-bind "$SCRIPT" /sandbox-test.sh \
+            --proc /proc \
+            --dev /dev \
+            --tmpfs /tmp \
+            --tmpfs /run \
+            --tmpfs /work \
+            --cap-drop ALL \
+            --clearenv \
+            --setenv PATH /usr/bin:/bin:/usr/sbin:/sbin \
+            --setenv HOME /tmp \
+            --setenv HOST_PROCESS_MARKER "$HOST_PROCESS_MARKER" \
+            --setenv HOST_MARKER "$HOST_MARKER" \
+            --setenv HOST_USER_NS "$HOST_USER_NS" \
+            --setenv HOST_PID_NS "$HOST_PID_NS" \
+            --setenv HOST_NET_NS "$HOST_NET_NS" \
+            --setenv HOST_MNT_NS "$HOST_MNT_NS" \
+            --chdir /work \
+            -- \
+            /bin/bash --noprofile --norc /sandbox-test.sh
+
+          echo "===== HARDENING DIAGNOSTIC COMPLETED ====="
