@@ -118,7 +118,7 @@ jobs:
 
           exec 9< "$FILTER"
 
-          timeout 60s bwrap \
+          setpriv --no-new-privs timeout 60s bwrap \
             --seccomp 9 \
             --unshare-user \
             --disable-userns \
