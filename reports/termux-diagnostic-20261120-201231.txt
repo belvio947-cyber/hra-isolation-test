@@ -1,0 +1,58 @@
+===== HRA ISOLATION DIAGNOSTIC: TERMUX =====
+Fri Nov 20 20:12:31 -03 2026
+
+===== SYSTEM =====
+Linux localhost 6.6.30-android15-8-gc338a81f088c-ab12786305-4k #1 SMP PREEMPT Wed Dec 11 19:18:45 UTC 2024 aarch64 Android
+uid=10316(u0_a316) gid=10316(u0_a316) groups=10316(u0_a316),1077(external_storage),3003(inet),9997(everybody),20316(u0_a316_cache),50316(all_a316) context=u:r:untrusted_app:s0:c60,c257,c512,c768
+
+===== TOOLS =====
+/data/data/com.termux/files/usr/bin/bwrap
+debootstrap: NOT AVAILABLE
+/data/data/com.termux/files/usr/bin/unshare
+/system/bin/ip
+/data/data/com.termux/files/usr/bin/python3
+/data/data/com.termux/files/usr/bin/bash
+
+===== SECURITY =====
+CapEff:	0000000000000000
+NoNewPrivs:	0
+Seccomp:	2
+
+===== NAMESPACES =====
+total 0
+lrwxrwxrwx. 1 u0_a316 u0_a316 0 Nov 20 20:12 cgroup -> cgroup:[4026531835]
+lrwxrwxrwx. 1 u0_a316 u0_a316 0 Nov 20 20:12 mnt -> mnt:[4026534262]
+lrwxrwxrwx. 1 u0_a316 u0_a316 0 Nov 20 20:12 net -> net:[4026531840]
+lrwxrwxrwx. 1 u0_a316 u0_a316 0 Nov 20 20:12 time -> time:[4026531834]
+lrwxrwxrwx. 1 u0_a316 u0_a316 0 Nov 20 20:12 time_for_children -> time:[4026531834]
+lrwxrwxrwx. 1 u0_a316 u0_a316 0 Nov 20 20:12 uts -> uts:[4026531838]
+
+===== NETWORK =====
+cat: /proc/net/dev: Permission denied
+cat: /proc/net/route: Permission denied
+
+===== MOUNTS =====
+/dev/block/dm-3 / erofs ro,seclabel,relatime,user_xattr,acl,cache_strategy=readaround 0 0
+tmpfs /dev tmpfs rw,seclabel,nosuid,relatime,size=3910372k,nr_inodes=977593,mode=755 0 0
+devpts /dev/pts devpts rw,seclabel,relatime,mode=600,ptmxmode=000 0 0
+none /dev/blkio cgroup rw,nosuid,nodev,noexec,relatime,blkio 0 0
+none /dev/cpuctl cgroup rw,nosuid,nodev,noexec,relatime,cpu 0 0
+none /dev/cpuset cgroup rw,nosuid,nodev,noexec,relatime,cpuset,noprefix,release_agent=/sbin/cpuset_release_agent 0 0
+none /dev/memcg cgroup rw,nosuid,nodev,noexec,relatime,memory 0 0
+binder /dev/binderfs binder rw,relatime,max=1048576,stats=global 0 0
+adb /dev/usb-ffs/adb functionfs rw,relatime 0 0
+mtp /dev/usb-ffs/mtp functionfs rw,relatime 0 0
+ptp /dev/usb-ffs/ptp functionfs rw,relatime 0 0
+proc /proc proc rw,relatime,gid=3009,hidepid=invisible 0 0
+sysfs /sys sysfs rw,seclabel,relatime 0 0
+selinuxfs /sys/fs/selinux selinuxfs rw,relatime 0 0
+none /sys/fs/cgroup cgroup2 rw,nosuid,nodev,noexec,relatime,memory_recursiveprot 0 0
+tracefs /sys/kernel/tracing tracefs rw,seclabel,relatime,gid=3012 0 0
+none /sys/fs/fuse/connections fusectl rw,relatime 0 0
+bpf /sys/fs/bpf bpf rw,nosuid,nodev,noexec,relatime 0 0
+pstore /sys/fs/pstore pstore rw,seclabel,nosuid,nodev,noexec,relatime 0 0
+tmpfs /mnt tmpfs rw,seclabel,nosuid,nodev,noexec,relatime,size=3910372k,nr_inodes=977593,mode=755,gid=1000 0 0
+
+===== USER NAMESPACE TEST =====
+unshare: unshare failed: Invalid argument
+unshare_exit_code=1
