@@ -78,7 +78,10 @@ jobs:
           test -f "$ROOTFS/sandbox-test.sh"
 
           echo "PASS: minimal filesystem created"
-          du -sh "$ROOTFS"
+          if ! du -sh "$ROOTFS" 2>"$RUNNER_TEMP/du-errors.log"; then
+            echo "WARNING: Some protected directories could not be inspected."
+            cat "$RUNNER_TEMP/du-errors.log"
+          fi
 
       - name: Run hardened sandbox tests
         run: |
