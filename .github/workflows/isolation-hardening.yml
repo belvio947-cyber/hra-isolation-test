@@ -12,6 +12,9 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install security tools
         run: |
           set -euo pipefail
@@ -69,13 +72,11 @@ jobs:
             "$ROOTFS/tmp" \
             "$ROOTFS/run"
 
-          sudo touch "$ROOTFS/sandbox-test.sh"
 
           test -x "$ROOTFS/bin/bash"
           test -x "$ROOTFS/usr/bin/python3"
           test -x "$ROOTFS/usr/bin/unshare"
           test -x "$ROOTFS/usr/sbin/ip" || test -x "$ROOTFS/sbin/ip"
-          test -f "$ROOTFS/sandbox-test.sh"
 
           echo "PASS: minimal filesystem created"
           if ! du -sh "$ROOTFS" 2>"$RUNNER_TEMP/du-errors.log"; then
@@ -91,8 +92,30 @@ jobs:
           SCRIPT="$GITHUB_WORKSPACE/.github/scripts/sandbox-test.sh"
           FILTER="$RUNNER_TEMP/deny-ptrace.bpf"
 
-          test -s "$FILTER"
-          test -s "$SCRIPT"
+          echo "===== PRE-FLIGHT CHECKS ====="
+          echo "Workspace: $GITHUB_WORKSPACE"
+          echo "Root filesystem: $ROOTFS"
+          echo "Seccomp filter: $FILTER"
+          echo "Sandbox script: $SCRIPT"
+
+          if [[ ! -s "$FILTER" ]]; then
+            echo "FAIL: seccomp filter missing or empty"
+            ls -la "$RUNNER_TEMP"
+            exit 1
+          fi
+
+          if [[ ! -s "$SCRIPT" ]]; then
+            echo "FAIL: sandbox-test.sh missing or empty"
+            ls -la "$GITHUB_WORKSPACE/.github/scripts/" || true
+            exit 1
+          fi
+
+          if [[ ! -x "$ROOTFS/bin/bash" ]]; then
+            echo "FAIL: rootfs bash missing"
+            exit 1
+          fi
+
+          echo "PASS: all required files exist"
 
           bash -n "$SCRIPT"
 
