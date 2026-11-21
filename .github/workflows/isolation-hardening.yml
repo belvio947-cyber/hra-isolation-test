@@ -22,6 +22,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             bubblewrap \
+            apparmor-profiles \
+            apparmor-utils \
             debootstrap \
             iproute2 \
             util-linux \
@@ -53,6 +55,35 @@ jobs:
           SECCOMP
 
           test -s "$RUNNER_TEMP/deny-ptrace.bpf"
+
+      - name: Configure restricted Bubblewrap AppArmor profile
+        run: |
+          set -euo pipefail
+
+          PROFILE_SRC="/usr/share/apparmor/extra-profiles/bwrap-userns-restrict"
+          PROFILE_DST="/etc/apparmor.d/bwrap-userns-restrict"
+
+          echo "===== APPARMOR CONFIGURATION ====="
+          sysctl kernel.apparmor_restrict_unprivileged_userns
+
+          if [[ ! -r "$PROFILE_SRC" ]]; then
+            echo "FAIL: restricted Bubblewrap AppArmor profile not found"
+            find /usr/share/apparmor -iname '*bwrap*' -print || true
+            exit 1
+          fi
+
+          sudo install -m 0644 "$PROFILE_SRC" "$PROFILE_DST"
+          sudo apparmor_parser -r "$PROFILE_DST"
+
+          echo "===== VERIFY APPARMOR PROFILE ====="
+          sudo aa-status
+
+          echo "===== VERIFY NETWORK NAMESPACE ====="
+          bwrap --unshare-user --unshare-net \
+            --ro-bind / / --proc /proc --dev /dev \
+            /bin/true
+
+          echo "PASS: Bubblewrap network namespace initialized"
 
       - name: Build minimal filesystem
         run: |
