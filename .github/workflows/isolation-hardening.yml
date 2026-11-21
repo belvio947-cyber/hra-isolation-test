@@ -171,6 +171,7 @@ jobs:
           trap cleanup EXIT
 
           exec 9< "$FILTER"
+          exec 10< "$SCRIPT"
 
           setpriv --no-new-privs timeout 60s bwrap \
             --seccomp 9 \
@@ -183,10 +184,10 @@ jobs:
             --new-session \
             --die-with-parent \
             --ro-bind "$ROOTFS" / \
-            --ro-bind "$SCRIPT" /sandbox-test.sh \
             --proc /proc \
             --dev /dev \
             --tmpfs /tmp \
+            --file 10 /tmp/sandbox-test.sh \
             --tmpfs /run \
             --tmpfs /work \
             --cap-drop ALL \
@@ -201,6 +202,6 @@ jobs:
             --setenv HOST_MNT_NS "$HOST_MNT_NS" \
             --chdir /work \
             -- \
-            /bin/bash --noprofile --norc /sandbox-test.sh
+            /bin/bash --noprofile --norc /tmp/sandbox-test.sh
 
           echo "===== HARDENING DIAGNOSTIC COMPLETED ====="
