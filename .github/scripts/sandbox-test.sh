@@ -132,30 +132,45 @@ python3 - <<'PROCESS'
 import glob
 import os
 
-marker = os.environ["HOST_PROCESS_MARKER"].encode()
+marker = b"HRA_SENTINEL_HRA_ISOLATION_2026"
+host_pid = os.environ.get("HOST_PID")
+
 paths = glob.glob("/proc/[0-9]*/cmdline")
 
 if not paths:
     raise SystemExit("FAIL: process table could not be inspected")
 
+visible_pids = []
 hits = []
 
 for path in paths:
+    pid = path.split("/")[2]
+
     try:
         with open(path, "rb") as handle:
             content = handle.read()
-    except FileNotFoundError:
+
+        ns = os.readlink(f"/proc/{pid}/ns/pid")
+
+    except (FileNotFoundError, PermissionError, ProcessLookupError):
         continue
 
-    if marker in content:
-        hits.append(path)
+    visible_pids.append(pid)
 
-print("HOST_SENTINEL_VISIBLE", hits)
+    if marker in content:
+        hits.append((pid, ns, path))
+
+print("VISIBLE_PROCESS_COUNT:", len(visible_pids))
+print("HOST_SENTINEL_PID:", host_pid)
+print("HOST_SENTINEL_VISIBLE:", hits)
+
+if host_pid and host_pid in visible_pids:
+    raise SystemExit("FAIL: host sentinel PID is visible")
 
 if hits:
-    raise SystemExit("FAIL: host process sentinel is visible")
+    raise SystemExit("FAIL: host process sentinel found in process table")
 
-print("PASS: host process sentinel not visible")
+print("PASS: host sentinel is not visible")
 PROCESS
 
 echo "===== NETWORK TEST ====="

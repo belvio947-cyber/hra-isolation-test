@@ -156,7 +156,7 @@ jobs:
           HOST_MNT_NS="$(readlink /proc/self/ns/mnt)"
 
           HOST_MARKER="/tmp/hra-host-marker-$$"
-          HOST_PROCESS_MARKER="HRA_HOST_SENTINEL_$$"
+          HOST_PROCESS_MARKER="HRA_SENTINEL_HRA_ISOLATION_2026"
 
           touch "$HOST_MARKER"
 
@@ -194,7 +194,6 @@ jobs:
             --clearenv \
             --setenv PATH /usr/bin:/bin:/usr/sbin:/sbin \
             --setenv HOME /tmp \
-            --setenv HOST_PROCESS_MARKER "$HOST_PROCESS_MARKER" \
             --setenv HOST_MARKER "$HOST_MARKER" \
             --setenv HOST_USER_NS "$HOST_USER_NS" \
             --setenv HOST_PID_NS "$HOST_PID_NS" \
